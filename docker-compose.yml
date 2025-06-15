@@ -1,0 +1,115 @@
+services:
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus:v3.4.1          # RC-2025-06 (OTLP natif) :contentReference[oaicite:0]{index=0}
+    user: root
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--web.config.file=/etc/prometheus/prometheus-web.yml"
+      - "--storage.tsdb.path=/prometheus/data/"
+      - "--storage.tsdb.retention.time=90d"
+      - "--storage.tsdb.retention.size=30GB"
+      - "--storage.tsdb.wal-compression"
+      - "--storage.tsdb.max-block-duration=2h"
+      - "--storage.tsdb.min-block-duration=2h"
+      - "--web.enable-remote-write-receiver"
+      - "--web.enable-otlp-receiver"
+      - "--web.max-connections=512"
+      - "--query.lookback-delta=30s"
+      - "--query.max-concurrency=64"
+      - "--query.timeout=30s"
+      - "--enable-feature=native-histograms,memory-snapshot-on-shutdown,exemplar-storage"
+      - "--log.level=info"
+      - "--log.format=logfmt"
+    ports: ["9090:9090"]
+    volumes:
+      - /opt/monitoring/data/prometheus:/prometheus/data
+      - /opt/monitoring/config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - /opt/monitoring/config/prometheus-web.yml:/etc/prometheus/prometheus-web.yml:ro
+      - /opt/monitoring/certs:/certs
+    networks: [observability]
+    restart: unless-stopped
+
+  tempo:
+    container_name: tempo
+    image: grafana/tempo:main-0a45826
+    command: ["--config.file=/etc/tempo.yaml"]
+    expose: ["4317", "4318"]      # receivers internes seulement
+    ports: ["3200:3200"]          # métriques pour Prometheus
+    user: root
+    volumes:
+      - /opt/monitoring/config/tempo.yaml:/etc/tempo.yaml:ro
+      - /opt/monitoring/certs:/certs:ro
+      - /opt/monitoring/data/tempo/:/var/tempo:rw
+    networks: [observability]
+    restart: unless-stopped
+
+  loki:
+    container_name: loki
+    image: grafana/loki:main-d8ed1f5
+    command: ["-config.file=/etc/loki.yaml"]
+    expose: ["3100"]
+    user: root
+    volumes:
+      - /opt/monitoring/config/loki.yaml:/etc/loki.yaml:ro
+      - /opt/monitoring/certs:/certs:ro
+      - /opt/monitoring/data/loki/:/loki
+    networks: [observability]
+    restart: unless-stopped
+
+  otel-collector:
+    container_name: otel-collector
+    image: otel/opentelemetry-collector-contrib:0.128.0
+    command: ["--config=/etc/otel-collector.yaml"]
+    expose: ["4317", "4318", "8888"]
+    volumes:
+      - /opt/monitoring/config/otel-collector.yaml:/etc/otel-collector.yaml:ro
+      - /opt/monitoring/certs:/certs:ro
+    networks: [observability]
+    restart: unless-stopped
+
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:12.0.0
+    ports: ["3000:3000"]
+    user: root
+    volumes:
+      - /opt/monitoring/config/grafana-provisioning:/etc/grafana/provisioning:ro
+      - /opt/monitoring/certs:/certs:ro
+      - /opt/monitoring/data/grafana:/var/lib/grafana:rw
+    environment:
+      - GF_SERVER_PROTOCOL=https
+      - GF_SERVER_CERT_FILE=/certs/cert.pem
+      - GF_SERVER_CERT_KEY=/certs/key.pem
+    networks: [observability]
+    restart: unless-stopped
+
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    container_name: node-exporter
+    hostname: node-exporter
+    environment:
+      TZ: Europe/Zurich
+    networks:
+      - observability
+    command:
+      - '--path.rootfs=/host'
+      - --collector.systemd
+      - --collector.ethtool
+      - --collector.mountstats
+      - --collector.network_route
+      - --collector.processes
+      - --collector.sysctl
+      - --collector.tcpstat
+      - --collector.zoneinfo
+    ports:
+      - 9100:9100
+    volumes:
+      - /:/host:ro,rslave
+      - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+
+networks:
+  observability:

@@ -1,0 +1,46 @@
+server:
+  http_listen_port: 3200
+  grpc_listen_port: 9095
+  http_tls_config:
+    cert_file: /certs/cert.pem
+    key_file: /certs/key.pem
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: tempo:4317
+        http:
+          endpoint: tempo:4318
+
+ingester:
+  trace_idle_period: 10s
+  max_block_bytes: 64_000_000
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo/traces
+    wal:
+      path: /var/tempo/wal
+    block:
+      v2_encoding: zstd
+
+compactor:
+  compaction:
+    compaction_window: 1h           # valide
+    max_block_bytes: 100_000_000    # valide
+    block_retention: 720h           # 30 jours
+    compacted_block_retention: 24h  # garde bloc compacté 24h avant suppression
+
+metrics_generator:
+  storage:
+    path: /var/tempo/metrics-wal
+
+overrides:
+  metrics_generator_processors:
+    - service-graphs
+    - span-metrics
+  max_bytes_per_trace: 100_000

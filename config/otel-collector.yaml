@@ -1,0 +1,62 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+        tls:
+          cert_file: /certs/cert.pem
+          key_file: /certs/key.pem
+      http:
+        endpoint: 0.0.0.0:4318
+        tls:
+          cert_file: /certs/cert.pem
+          key_file: /certs/key.pem
+
+processors:
+  memory_limiter:
+    check_interval: 2s
+    limit_mib: 400
+    spike_limit_mib: 100
+
+  batch:
+    timeout: 5s
+    send_batch_size: 1000
+    send_batch_max_size: 2000
+
+exporters:
+  prometheus:
+    endpoint: 0.0.0.0:9888
+    tls:
+      cert_file: /certs/cert.pem
+      key_file: /certs/key.pem
+
+  otlp/traces:
+    endpoint: tempo:4317
+    compression: gzip
+    tls:
+      insecure: true
+
+  loki:
+    endpoint: https://loki:3100/loki/api/v1/push
+    tls:
+      insecure_skip_verify: true
+    headers:
+      Content-Type: application/json
+    compression: gzip
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [prometheus]
+
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/traces]
+
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [loki]
