@@ -48,7 +48,7 @@ services:
     container_name: loki
     image: grafana/loki:main-d8ed1f5
     command: ["-config.file=/etc/loki.yaml"]
-    expose: ["3100"]
+    ports: ["3100:3100"]
     user: root
     volumes:
       - /opt/monitoring/config/loki.yaml:/etc/loki.yaml:ro
